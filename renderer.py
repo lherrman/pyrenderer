@@ -7,6 +7,7 @@ Created on Sun Oct 13 19:40:09 2019
 import numpy as np
 import cv2
 import sys
+import time
 
 
 class Proj3d(object):
@@ -45,7 +46,7 @@ class Proj3d(object):
             # cv2.line(self.image, self.projectet_vertex[f[1]-1], self.projectet_vertex[f[2]-1], 255,  1)
             # cv2.line(self.image, self.projectet_vertex[f[2]-1], self.projectet_vertex[f[0]-1], 255,  1)
 
-            self.__draw_triangle(vertices, 255, "wireframe")
+            self.__draw_triangle(vertices, 255, "solid")
 
 
 
@@ -56,15 +57,22 @@ class Proj3d(object):
         a = (p2[1] - p1[1])/(p2[0] - p1[0])
         b = p2[1] - a * p2[0]
         y = a*x + b
-        if np.isnan(y):
-            return False
-        else:
-            return int(y)
+        return int(y)
+
+    def __interpolate_list(self, p1, p2, x1, x2):
+        a = (p2[1] - p1[1])/(p2[0] - p1[0])
+        b = p2[1] - a * p2[0]
+        X = np.arange(x1, x2, 1, dtype=np.uint32)
+        Y = np.round(X * a + b)
+        Y = Y.astype(np.uint32)
+        
+        return (X, Y)
+
 
     def __draw_triangle(self, vertices, color, mode="solid"):
         sorted_vertices = vertices[np.argsort(vertices[:, 0])]
 
-        if mode == "solid":
+        if mode == "solid_old":
             for x in range(sorted_vertices[0,0], sorted_vertices[1,0]):
                 y1 = self.__interpolate(sorted_vertices[0], sorted_vertices[1], x)
                 y2 = self.__interpolate(sorted_vertices[0], sorted_vertices[2], x)
@@ -75,6 +83,22 @@ class Proj3d(object):
                 y2 = self.__interpolate(sorted_vertices[0], sorted_vertices[2], x)
                 self.image[y2:y1, x] = 255
                 self.image[y1:y2, x] = 255
+
+        elif mode == "solid":
+            X1, Y1  = self.__interpolate_list(sorted_vertices[0], sorted_vertices[1], sorted_vertices[0, 0], sorted_vertices[1,0])
+            X2, Y2  = self.__interpolate_list(sorted_vertices[0], sorted_vertices[2], sorted_vertices[0, 0], sorted_vertices[1,0])
+            X3, Y3  = self.__interpolate_list(sorted_vertices[1], sorted_vertices[2], sorted_vertices[1, 0], sorted_vertices[2,0])
+            X4, Y4  = self.__interpolate_list(sorted_vertices[0], sorted_vertices[2], sorted_vertices[1, 0], sorted_vertices[2,0])
+
+
+            for n in range(len(X1)):
+                self.image[Y2[n]:Y1[n], X1[n]] = 255
+                self.image[Y1[n]:Y2[n], X1[n]] = 255
+            for n in range(len(X3)):    
+                self.image[Y4[n]:Y3[n], X3[n]] = 255
+                self.image[Y3[n]:Y4[n], X3[n]] = 255
+
+
         elif mode == "wireframe_int":
             for x in range(sorted_vertices[0,0], sorted_vertices[1,0]):
                 y1 = self.__interpolate(sorted_vertices[0], sorted_vertices[1], x)
@@ -99,12 +123,15 @@ class Proj3d(object):
 
 
     def testCube(self):
-        b1 = P3dObject(np.array([0,0,0]))
+        b1 = P3dObject(np.array([0,0,0]), [0.0, 0.0, 3.2*  np.pi/2], 0.03)
         a = 0.0
         while 1:
+            t1 = time.time()
             b1.set_pos(np.array([0, 0, 10 ]))
             b1.rotate([0.03, 0.0, 0.0])
             self.project(b1)
+            t2 = time.time()
+            print(t2-t1,"ms  ", 1/(t2-t1)," FPS")
             if cv2.waitKey(25) == 27:
                 break
             a += 0.04
@@ -112,7 +139,7 @@ class Proj3d(object):
 
 
 class P3dObject():
-    def __init__(self,pos , orientation = [0.0, 0.0, 3.2*  np.pi/2] ):
+    def __init__(self,pos , orientation = [0.0, 0.0, 0.0], scale = 0.03):
         self.pos = pos
         self.orientation = orientation
         path = "obj/teapot.obj"
@@ -132,7 +159,7 @@ class P3dObject():
                 faces.append([int(numbs[0]), int(numbs[1]), int(numbs[2])])
                 
         self.vertex = np.array(vertex)
-        self.vertex = self.vertex * 0.03
+        self.vertex = self.vertex * scale
         self.faces = np.array(faces) 
         self.world_coord =  [np.array( [v[0] + self.pos[0] , v[1] + self.pos[1] , v[2] + self.pos[2], 1]) for v in self.vertex]
         
