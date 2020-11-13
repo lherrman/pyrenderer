@@ -31,20 +31,73 @@ class Proj3d(object):
             self.p = (np.matmul(self.P, v) / (-v[2]))
             self.p[0] *= self.whalf
             self.p[1] *= self.hhalf
-            self.projectet_vertex.append(( int(self.p[1]+self.whalf), int(self.p[0]+self.hhalf)))
-            x = int(self.p[0]+self.hhalf)
-            y = int(self.p[1]+self.whalf)
+            self.projectet_vertex.append(np.array([int(self.p[1]+self.whalf), int(self.p[0]+self.hhalf)]))
+            # x = int(self.p[0]+self.hhalf)
+            # y = int(self.p[1]+self.whalf)
+            # cv2.circle(self.image,(y,x),3,255,thickness = 1)
 
-            #cv2.circle(self.image,(y,x),3,255,thickness = 1)
-            
         for f in object3d.faces:
-            cv2.line(self.image, self.projectet_vertex[f[0]-1], self.projectet_vertex[f[1]-1], 255,  1)
-            cv2.line(self.image, self.projectet_vertex[f[1]-1], self.projectet_vertex[f[2]-1], 255,  1)
-            cv2.line(self.image, self.projectet_vertex[f[2]-1], self.projectet_vertex[f[0]-1], 255,  1)
-               
-        cv2.imshow("render3d{}".format(self),self.image)    
-        
-        
+            vertices = np.array([self.projectet_vertex[f[0]-1],
+                                 self.projectet_vertex[f[1]-1],
+                                 self.projectet_vertex[f[2]-1]])
+
+            # cv2.line(self.image, self.projectet_vertex[f[0]-1], self.projectet_vertex[f[1]-1], 255,  1)
+            # cv2.line(self.image, self.projectet_vertex[f[1]-1], self.projectet_vertex[f[2]-1], 255,  1)
+            # cv2.line(self.image, self.projectet_vertex[f[2]-1], self.projectet_vertex[f[0]-1], 255,  1)
+
+            self.__draw_triangle(vertices, 255, "wireframe")
+
+
+
+        cv2.imshow("render3d{}".format(self), self.image)
+
+
+    def __interpolate(self, p1, p2, x):
+        a = (p2[1] - p1[1])/(p2[0] - p1[0])
+        b = p2[1] - a * p2[0]
+        y = a*x + b
+        if np.isnan(y):
+            return False
+        else:
+            return int(y)
+
+    def __draw_triangle(self, vertices, color, mode="solid"):
+        sorted_vertices = vertices[np.argsort(vertices[:, 0])]
+
+        if mode == "solid":
+            for x in range(sorted_vertices[0,0], sorted_vertices[1,0]):
+                y1 = self.__interpolate(sorted_vertices[0], sorted_vertices[1], x)
+                y2 = self.__interpolate(sorted_vertices[0], sorted_vertices[2], x)
+                self.image[y2:y1, x] = 255
+                self.image[y1:y2, x] = 255
+            for x in range(sorted_vertices[1,0], sorted_vertices[2,0]):
+                y1 = self.__interpolate(sorted_vertices[1], sorted_vertices[2], x)
+                y2 = self.__interpolate(sorted_vertices[0], sorted_vertices[2], x)
+                self.image[y2:y1, x] = 255
+                self.image[y1:y2, x] = 255
+        elif mode == "wireframe_int":
+            for x in range(sorted_vertices[0,0], sorted_vertices[1,0]):
+                y1 = self.__interpolate(sorted_vertices[0], sorted_vertices[1], x)
+                y2 = self.__interpolate(sorted_vertices[0], sorted_vertices[2], x)
+                self.image[y1, x] = 255
+                self.image[y2, x] = 255
+            for x in range(sorted_vertices[1,0], sorted_vertices[2,0]):
+                y1 = self.__interpolate(sorted_vertices[1], sorted_vertices[2], x)
+                y2 = self.__interpolate(sorted_vertices[0], sorted_vertices[2], x)
+                self.image[y1, x] = 255
+                self.image[y2, x] = 255
+        elif mode == "wireframe":
+            cv2.line(self.image, (sorted_vertices[0,0], sorted_vertices[0,1]), (sorted_vertices[1,0], sorted_vertices[1,1]),255,1)
+            cv2.line(self.image, (sorted_vertices[1,0], sorted_vertices[1,1]), (sorted_vertices[2,0], sorted_vertices[2,1]),255,1)
+            cv2.line(self.image, (sorted_vertices[2,0], sorted_vertices[2,1]), (sorted_vertices[0,0], sorted_vertices[0,1]),255,1)
+
+
+       # for vertex in vertices:
+        #    cv2.circle(self.image, (vertex[0], vertex[1]), 1, 255, thickness=-1)
+
+
+
+
     def testCube(self):
         b1 = P3dObject(np.array([0,0,0]))
         a = 0.0
@@ -54,9 +107,10 @@ class Proj3d(object):
             self.project(b1)
             if cv2.waitKey(25) == 27:
                 break
-            a += 0.04 
- 
-        
+            a += 0.04
+
+
+
 class P3dObject():
     def __init__(self,pos , orientation = [0.0, 0.0, 3.2*  np.pi/2] ):
         self.pos = pos
