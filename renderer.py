@@ -32,7 +32,7 @@ class Proj3d(object):
             self.p = (np.matmul(self.P, v) / (-v[2]))
             self.p[0] *= self.whalf
             self.p[1] *= self.hhalf
-            self.projectet_vertex.append(np.array([int(self.p[1]+self.whalf), int(self.p[0]+self.hhalf)]))
+            self.projectet_vertex.append(np.array([self.p[1]+self.whalf, self.p[0]+self.hhalf]))
             # x = int(self.p[0]+self.hhalf)
             # y = int(self.p[1]+self.whalf)
             # cv2.circle(self.image,(y,x),3,255,thickness = 1)
@@ -46,7 +46,7 @@ class Proj3d(object):
             # cv2.line(self.image, self.projectet_vertex[f[1]-1], self.projectet_vertex[f[2]-1], 255,  1)
             # cv2.line(self.image, self.projectet_vertex[f[2]-1], self.projectet_vertex[f[0]-1], 255,  1)
 
-            self.__draw_triangle(vertices, 255, "solid")
+            self.__draw_triangle(vertices, 255, "wireframe")
 
 
 
@@ -111,9 +111,9 @@ class Proj3d(object):
                 self.image[y1, x] = 255
                 self.image[y2, x] = 255
         elif mode == "wireframe":
-            cv2.line(self.image, (sorted_vertices[0,0], sorted_vertices[0,1]), (sorted_vertices[1,0], sorted_vertices[1,1]),255,1)
-            cv2.line(self.image, (sorted_vertices[1,0], sorted_vertices[1,1]), (sorted_vertices[2,0], sorted_vertices[2,1]),255,1)
-            cv2.line(self.image, (sorted_vertices[2,0], sorted_vertices[2,1]), (sorted_vertices[0,0], sorted_vertices[0,1]),255,1)
+            cv2.line(self.image, (int(np.ceil(sorted_vertices[0,0]- 0.5)), int(np.ceil(sorted_vertices[0,1]- 0.5))), (int(np.ceil(sorted_vertices[1,0]- 0.5)), int(np.ceil(sorted_vertices[1,1]- 0.5))),255,1)
+            cv2.line(self.image, (int(np.ceil(sorted_vertices[1,0]- 0.5)), int(np.ceil(sorted_vertices[1,1]- 0.5))), (int(np.ceil(sorted_vertices[2,0]- 0.5)), int(np.ceil(sorted_vertices[2,1]- 0.5))),255,1)
+            cv2.line(self.image, (int(np.ceil(sorted_vertices[2,0]- 0.5)), int(np.ceil(sorted_vertices[2,1]- 0.5))), (int(np.ceil(sorted_vertices[0,0]- 0.5)), int(np.ceil(sorted_vertices[0,1]- 0.5))),255,1)
 
 
        # for vertex in vertices:
