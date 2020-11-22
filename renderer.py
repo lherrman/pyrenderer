@@ -5,7 +5,7 @@
 import numpy as np
 import cv2
 import time
-from IPython import get_ipython
+
 
 class Renderer(object):
     def __init__(self, height, width):
@@ -85,12 +85,15 @@ class Renderer(object):
         while 1:
             t1 = time.time()
 
-            dist = dist + 0.1 * (distgoal - dist) + 0.01 * np.sign(distgoal - dist)*(distgoal - dist)**2
+            dist_diff = distgoal - dist
+            dist = dist + 0.1 * dist_diff + 0.01 * np.sign(dist_diff)*(dist_diff)**2
             rotate_mouse = self.mouse_xy_diff / 1000
             self.mouse_xy_diff *= 0.8
 
             b1.set_pos(np.array([0, 0, dist]))
-            b1.rotate([rotate_mouse[0], np.cos(b1.orientation[0]) * rotate_mouse[1], np.sin(b1.orientation[0]) * rotate_mouse[1]])
+            b1.rotate([rotate_mouse[0],
+                       np.cos(b1.orientation[0]) * rotate_mouse[1],
+                       np.sin(b1.orientation[0]) * rotate_mouse[1]])
 
             self.render(b1)
 
@@ -104,11 +107,10 @@ class Renderer(object):
             elif key == ord("s"):
                 distgoal -= 2
 
-            # (clear console and) print FPS every second
+            # print FPS every second
             t2 = time.time()
             if t2 - t0 > 1:
                 t0 = t2
-                # print("\033[H\033[J")
                 print("{:.3} ms {:2.3} FPS".format((t2-t1) * 1000, 1/(t2-t1)))
 
     def __mouse_update(self, event, x, y, flags, param):
@@ -125,10 +127,6 @@ class Renderer(object):
 
         elif event == cv2.EVENT_LBUTTONUP:
             self.mouse_btns[0] = False
-
-        elif event == cv2.EVENT_MOUSEHWHEEL:
-            self.mouse_wheel += 1
-            print(self.mouse_wheel)
 
     def __input_setup(self):
         cv2.setMouseCallback("render3d_{}".format(id(self)), self.__mouse_update)
@@ -194,5 +192,4 @@ if __name__ == "__main__":
     p3ds = Renderer(600, 1000)
     p3ds.render_test_orbit_control()
 
-    cv2.waitKey(0)
     cv2.destroyAllWindows()
