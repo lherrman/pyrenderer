@@ -10,32 +10,31 @@ import time
 class Renderer(object):
     def __init__(self, height, width):
         self.height, self.width = height, width
-        self.__hhalf, self.__whalf = int(height/2), (width/2)
-        self.fov = (np.pi/180) * 60
-        cv2.namedWindow("render3d_{}".format(id(self)))
+        self.__hhalf, self.__whalf = height // 2, width // 2
+        self.__stretch_factor = np.array([self.__whalf, self.__hhalf, 1]).reshape(1, 3)
+        self.__offset_factor = np.array([self.__hhalf, self.__whalf, 0]).reshape(1, 3)
+        self.__fov = (np.pi/180) * 60
         ratio = width / height
 
-        self.P = np.array([[1/np.tan(self.fov/2), 0, 0],
-                           [0, ratio/np.tan(self.fov/2), 0],
-                           [0, 0, 1]])
+        self.__P = np.array([[1 / np.tan(self.__fov / 2), 0, 0],
+                             [0, ratio / np.tan(self.__fov / 2), 0],
+                             [0, 0, 1]])
 
         self.image = np.zeros([self.height, self.width, 3], dtype=np.uint8)
 
+        cv2.namedWindow("render3d_{}".format(id(self)))
         self.__input_setup()
 
-    def render(self, object3d, mode="solid"):
+    def render(self, object3d, mode="shaded"):
         self.image *= 0
 
-        obj_vertecies = np.array(object3d.world_coord)
+        object_vertices_world = object3d.world_coord
 
         # project vertices to pixelspace
-        stretch_factor = np.array([self.__whalf, self.__hhalf, 1]).reshape(1, 3)
-        offset_factor = np.array([self.__hhalf, self.__whalf, 0]).reshape(1, 3)
-
-        projected_vertices = (self.P @ obj_vertecies.T).T
+        projected_vertices = (self.__P @ object_vertices_world.T).T
         projected_vertices[:, :2] /= -projected_vertices[:, 2].reshape(-1, 1)
-        projected_vertices *= stretch_factor
-        projected_vertices += offset_factor
+        projected_vertices *= self.__stretch_factor
+        projected_vertices += self.__offset_factor
 
         if mode == "point":
             obj_vertecies_int = np.ceil(projected_vertices).astype(np.int32)
@@ -73,29 +72,56 @@ class Renderer(object):
                 col = ((idx//6) % 256)
                 self.image = cv2.fillPoly(self.image, [face], (col, col, col), 1)
 
+        elif mode == "shaded":
+            obj_vertecies_int = np.ceil(projected_vertices[:, 0:2]).astype(np.uint32)
+
+            # calcualte indices that sorts faces from farthest away to nearest
+            depth = np.zeros(len(object3d.faces))
+            normal = np.zeros(len(object3d.faces))
+            for idx, f in enumerate(object3d.faces):
+                depth[idx] = projected_vertices[f[0]-1][2] + projected_vertices[f[1]-1][2] + projected_vertices[f[2]-1][2]
+                vec1 = object_vertices_world[f[0]-1] - object_vertices_world[f[1]-1]
+                vec2 = object_vertices_world[f[0]-1] - object_vertices_world[f[2]-1]
+                normal[idx] = np.cross(vec1, vec2)[1]
+
+            arg_depth_sort = np.argsort(depth)[::-1]
+
+            # draw faces
+            face = np.zeros((3, 1, 2), dtype=np.int32)
+            for idx, f in enumerate(object3d.faces):
+                face[0, 0, ::-1] = obj_vertecies_int[object3d.faces[arg_depth_sort[idx]][0]-1]
+                face[1, 0, ::-1] = obj_vertecies_int[object3d.faces[arg_depth_sort][idx][1]-1]
+                face[2, 0, ::-1] = obj_vertecies_int[object3d.faces[arg_depth_sort][idx][2]-1]
+
+                col = (normal[arg_depth_sort[idx]] * 512 + 20, 0, - normal[arg_depth_sort[idx]] * 1024 + 20)
+                self.image = cv2.fillPoly(self.image, [face], col, 1)
+
         cv2.imshow("render3d_{}".format(id(self)), self.image)
 
     def render_test_orbit_control(self):
-        b1 = P3dObject(np.array([0, 0, 0]), [0.0, 0.0, 3.2 * np.pi/2], 0.03)
+        b1 = P3dObject([0, 0, 0], [0.0, 0.0, 3.2 * np.pi/2], scale=0.03)
 
         t0 = time.time()
-        dist = 20.
+        mode_n, modes = 2, ["point", "wireframe", "solid", "shaded"]
+        dist = 14.
         distgoal = 7.
-
         while 1:
             t1 = time.time()
 
             dist_diff = distgoal - dist
             dist = dist + 0.1 * dist_diff + 0.01 * np.sign(dist_diff)*(dist_diff)**2
-            rotate_mouse = self.mouse_xy_diff / 1000
-            self.mouse_xy_diff *= 0.8
+            rotate_mouse = self.__mouse_xy_diff / 1000
+            if self.__mouse_btns[0]:
+                self.__mouse_xy_diff *= 0.6
+            else:
+                self.__mouse_xy_diff *= 0.99
 
             b1.set_pos(np.array([0, 0, dist]))
             b1.rotate([rotate_mouse[0],
                        np.cos(b1.orientation[0]) * rotate_mouse[1],
                        np.sin(b1.orientation[0]) * rotate_mouse[1]])
 
-            self.render(b1)
+            self.render(b1, modes[mode_n])
 
             # Keyboard input
             key = cv2.waitKey(1)
@@ -106,42 +132,46 @@ class Renderer(object):
                 self.render(b1)
             elif key == ord("s"):
                 distgoal -= 2
+            elif key == ord("d"):
+                mode_n += 1
+                mode_n = mode_n % len(modes)
+            elif key == ord("a"):
+                mode_n -= 1
+                mode_n = mode_n % len(modes)
 
             # print FPS every second
             t2 = time.time()
             if t2 - t0 > 1:
                 t0 = t2
-                print("{:.3} ms {:2.3} FPS".format((t2-t1) * 1000, 1/(t2-t1)))
+                print("{:.3} ms {:2.4} FPS".format((t2-t1) * 1000, 1/(t2-t1)))
 
     def __mouse_update(self, event, x, y, flags, param):
         if event == cv2.EVENT_MOUSEMOVE:
-            last = self.mouse_xy.copy()
-
-            self.mouse_xy[:] = [x, y]
-            if self.mouse_btns[0]:
-                self.mouse_xy_diff += (self.mouse_xy - last)
-                self.mouse_xy_diff *= 1
+            last = self.__mouse_xy.copy()
+            self.__mouse_xy[:] = [x, y]
+            if self.__mouse_btns[0]:
+                self.__mouse_xy_diff += (self.__mouse_xy - last)
 
         if event == cv2.EVENT_LBUTTONDOWN:
-            self.mouse_btns[0] = True
+            self.__mouse_btns[0] = True
 
         elif event == cv2.EVENT_LBUTTONUP:
-            self.mouse_btns[0] = False
+            self.__mouse_btns[0] = False
 
     def __input_setup(self):
         cv2.setMouseCallback("render3d_{}".format(id(self)), self.__mouse_update)
-        self.mouse_xy = np.array([0., 0])
-        self.mouse_xy_diff = np.array([0., 0])
-        self.mouse_btns = np.array([False, False, False])
-        self.mouse_wheel = 0.0
+        self.__mouse_xy = np.array([0., 0])
+        self.__mouse_xy_diff = np.array([0., 0])
+        self.__mouse_btns = np.array([False, False, False])
         # print([i for i in dir(cv2) if 'EVENT' in i])
 
 
 class P3dObject():
     def __init__(self, pos, orientation=[0.0, 0.0, 0.0], scale=1, path="obj/teapot.obj"):
-        self.pos = pos
-        self.orientation = orientation
+        self.pos = np.array(pos)
+        self.orientation = np.array(orientation)
 
+        # read .obj file and extract vertices and faces
         f = open(path, 'r')
         obj_data = f.readlines()
         f.close()
@@ -159,13 +189,12 @@ class P3dObject():
                 faces.append([int(numbs[0]), int(numbs[1]), int(numbs[2])])
 
         self.vertices = np.array(vertices)
-        self.vertices = self.vertices * scale
+        self.vertices *= scale
         self.faces = np.array(faces)
         self.world_coord = self.vertices + self.pos
 
     def rotate(self, rotXYZ):
-        for n in range(3):
-            self.orientation[n] += rotXYZ[n]
+        self.orientation += rotXYZ
 
         rotX = np.array([[1, 0, 0],
                          [0, np.cos(self.orientation[0]), np.sin(self.orientation[0])],
